@@ -1,0 +1,84 @@
+version: "3.8"
+services:
+  booking_system_postgres_db_service:
+    image: postgres:13.15
+    container_name: booking_system_postgres_db_service
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /var/lib/postgresql/data:/var/lib/postgresql/data
+    networks:
+      clusternetwork:
+        ipv4_address: 172.16.0.14
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  booking_system_mongodb_service:
+    image: mongo:latest
+    container_name: booking_system_mongodb
+    environment:
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+      MONGO_DB_HOST: ${MONGO_DB_HOST}
+    volumes:
+      - /data/db:/data/db
+    networks:
+      clusternetwork:
+        ipv4_address: 172.16.0.13
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mongo --eval 'db.runCommand({ connectionStatus: 1 })'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  booking_system_service:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    stop_signal: SIGINT
+    container_name: booking_system_service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_CONNECTION_URL: ${POSTGRES_CONNECTION_URL}
+      MONGO_PORT: ${MONGO_PORT}
+      MONGO_DB_HOST: ${MONGO_DB_HOST}
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+      MONGO_CONNECTION_URL: mongodb://booking_system_mongodb_service:27017/booking_system
+      APP_PORT: ${APP_PORT}
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    depends_on:
+      - booking_system_postgres_db_service
+      - booking_system_mongodb_service
+    links:
+      - booking_system_postgres_db_service
+      - booking_system_mongodb_service
+    networks:
+      clusternetwork:
+        ipv4_address: 172.16.0.12
+    restart: always
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl --fail http://localhost:${APP_PORT}/health || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+
+networks:
+  clusternetwork:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.0.0/24
